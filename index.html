@@ -64,6 +64,10 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--txt);min-hei
   padding:9px 10px;color:var(--txt);font-family:'Space Mono',monospace;font-size:12px;outline:none;
   min-height:38px}
 .cfg-inp:focus{border-color:var(--acc)}
+.layout-btn{flex:1;padding:7px 8px;border-radius:6px;border:1px solid var(--bdr);
+  background:var(--bg);color:var(--dim);font-family:'Syne',sans-serif;font-size:11px;
+  font-weight:700;cursor:pointer;transition:all .2s}
+.layout-btn.active{background:var(--acc);color:#000;border-color:var(--acc)}
 
 /* Upload */
 .upload-label{
@@ -134,15 +138,16 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--txt);min-hei
 .modal{background:var(--sur);border:1px solid var(--bdr);border-radius:16px;padding:20px;
   width:100%;max-width:320px}
 .modal-ttl{font-size:14px;font-weight:700;margin-bottom:16px}
-.thermal{background:#fff;color:#000;font-family:'Space Mono',monospace;
-  width:200px;margin:0 auto 16px;padding:10px 8px;text-align:center;
-  border-radius:4px;font-size:11px;line-height:1.6}
-.t-brand{font-size:13px;font-weight:700;border-bottom:1px dashed #999;padding-bottom:4px;margin-bottom:6px}
-.t-lbl{font-size:9px;color:#666}
-.t-code{font-size:18px;font-weight:700;letter-spacing:2px;margin:4px 0;
-  border:2px solid #000;display:inline-block;padding:4px 6px;border-radius:3px}
-.t-hr{border:none;border-top:1px dashed #aaa;margin:6px 0}
-.t-price{font-size:11px;margin-top:4px}
+.thermal{background:#fff;color:#000;font-family:'Courier New',Courier,monospace;
+  width:210px;margin:0 auto 16px;padding:4px 8px;text-align:center;
+  border-radius:4px;font-size:9px;line-height:1.4}
+.t-brand{font-size:11px;font-weight:bold;text-decoration:underline;margin-bottom:1px}
+.t-lbl{font-size:8px;color:#666}
+.t-code{font-size:15px;font-weight:700;letter-spacing:2px;margin:2px 0}
+.t-hr{border:none;border-top:1px dashed #aaa;margin:2px 0}
+.t-cut{border:none;border-top:1px dashed #000;margin:3px 0}
+.t-solid{border:none;border-top:1px solid #000;margin:3px 0}
+.t-price{font-size:9px}
 .modal-btns{display:flex;gap:8px;margin-top:8px}
 
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
@@ -175,6 +180,14 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--txt);min-hei
     <div class="cfg-row">
       <span class="cfg-lbl">Info Extra</span>
       <input class="cfg-inp" id="cExtra" value="1d 1d" placeholder="1 hari / 2 jam">
+    </div>
+    <div class="cfg-row">
+      <span class="cfg-lbl">Layout</span>
+      <div style="display:flex;gap:8px;flex:1">
+        <button id="btnBig" onclick="setLayout('big')" class="layout-btn">Big</button>
+        <button id="btnNormal" onclick="setLayout('normal')" class="layout-btn">Normal</button>
+        <button id="btnCompact" onclick="setLayout('compact')" class="layout-btn active">Compact</button>
+      </div>
     </div>
   </div>
 
@@ -424,12 +437,34 @@ function openPreview() {
   const brand = document.getElementById('cBrand').value||'BRAND';
   const price = document.getElementById('cPrice').value||'Rp 2.000';
   const extra = document.getElementById('cExtra').value||'';
-  document.getElementById('thermalBox').innerHTML = `
-    <div class="t-brand">${brand}</div>
-    <div class="t-lbl">Kode Voucher</div>
-    <div class="t-code">${first.code}</div>
-    <hr class="t-hr">
-    <div class="t-price">${extra?extra+'  ':''}${price}</div>`;
+  const info  = (extra?extra+' ':'')+price;
+  let html = '';
+
+  if (printLayout === 'big') {
+    html = `
+      <div style="font-size:14px;font-weight:bold;border-bottom:1px dashed #999;padding-bottom:3px;margin-bottom:3px">${brand}</div>
+      <div class="t-lbl">Kode Voucher</div>
+      <div style="font-size:20px;font-weight:800;letter-spacing:2px;margin:3px 0;border:2px solid #000;display:inline-block;padding:3px 6px">${first.code}</div>
+      <hr class="t-hr">
+      <div class="t-price">${info}</div>`;
+  } else if (printLayout === 'normal') {
+    html = `
+      <div style="font-size:12px;font-weight:bold;margin-bottom:2px">${brand}</div>
+      <hr class="t-hr">
+      <div class="t-lbl">Kode Voucher</div>
+      <div style="font-size:17px;font-weight:700;letter-spacing:2px;margin:2px 0">${first.code}</div>
+      <hr class="t-hr">
+      <div class="t-price">${info}</div>
+      <hr class="t-cut">`;
+  } else {
+    html = `
+      <div class="t-brand">${brand}</div>
+      <div class="t-lbl">Kode Voucher</div>
+      <div class="t-code">${first.code}</div>
+      <div class="t-price">${info}</div>
+      <hr class="t-cut">`;
+  }
+  document.getElementById('thermalBox').innerHTML = html;
   document.getElementById('modalBg').classList.add('show');
 }
 function closeModal() { document.getElementById('modalBg').classList.remove('show'); }
@@ -489,27 +524,58 @@ function setBleUI(s) {
   lbl.textContent = s==='on'?'Terhubung':s==='ing'?'...':'BLE';
 }
 
+let printLayout = 'compact';
+
+function setLayout(mode) {
+  printLayout = mode;
+  ['big','normal','compact'].forEach(m => {
+    document.getElementById('btn'+m.charAt(0).toUpperCase()+m.slice(1)).className =
+      'layout-btn' + (mode===m?' active':'');
+  });
+}
+
 // ── ESC/POS ──
 function escPos(code) {
   const brand = document.getElementById('cBrand').value||'BRAND';
   const price = document.getElementById('cPrice').value||'Rp 2.000';
   const extra = document.getElementById('cExtra').value||'';
   const b = [], tx = s => { for(const c of s) b.push(c.charCodeAt(0)&0xFF); };
+  const info = (extra?extra+' ':'')+price;
+
   b.push(0x1B,0x40);
-  b.push(0x1B,0x61,0x01);
-  b.push(0x1B,0x21,0x30); tx(brand); b.push(0x0A);
-  b.push(0x1B,0x21,0x00); tx('----------------'); b.push(0x0A);
-  tx('Kode Voucher'); b.push(0x0A);
-  b.push(0x1B,0x21,0x30); tx(code); b.push(0x0A);
-  b.push(0x1B,0x21,0x00); tx('----------------'); b.push(0x0A);
-  if(extra){tx(extra);b.push(0x20);}
-  tx(price); b.push(0x0A,0x0A);
-  // Garis potong full width
-  tx('- - - - - - - - - - - - -'); b.push(0x0A);
-  tx('   ^ POTONG SINI ^'); b.push(0x0A);
-  tx('- - - - - - - - - - - - -'); b.push(0x0A);
-  b.push(0x0A,0x0A);
-  b.push(0x1D,0x56,0x00);
+  b.push(0x1B,0x61,0x01); // center
+
+  if (printLayout === 'big') {
+    // BIG: brand & kode double height+width, 2 garis dashes, 3 feed
+    b.push(0x1B,0x21,0x30); tx(brand); b.push(0x0A);
+    b.push(0x1B,0x21,0x00); tx('----------------'); b.push(0x0A);
+    tx('Kode Voucher'); b.push(0x0A);
+    b.push(0x1B,0x21,0x30); tx(code); b.push(0x0A);
+    b.push(0x1B,0x21,0x00); tx('----------------'); b.push(0x0A);
+    tx(info); b.push(0x0A,0x0A,0x0A);
+    b.push(0x1D,0x56,0x00);
+
+  } else if (printLayout === 'normal') {
+    // NORMAL: brand bold biasa, kode double width saja
+    b.push(0x1B,0x21,0x08); tx(brand); b.push(0x0A);
+    b.push(0x1B,0x21,0x00); tx('----------------'); b.push(0x0A);
+    tx('Kode Voucher'); b.push(0x0A);
+    b.push(0x1B,0x21,0x20); tx(code); b.push(0x0A); // double width
+    b.push(0x1B,0x21,0x00); tx('----------------'); b.push(0x0A);
+    tx(info); b.push(0x0A,0x0A);
+    tx('- - - - - - - - - - - -'); b.push(0x0A);
+    b.push(0x1D,0x56,0x00);
+
+  } else {
+    // COMPACT: semua normal, brand underline, kode bold, 1 feed
+    b.push(0x1B,0x21,0x08);
+    b.push(0x1B,0x2D,0x01); tx(brand); b.push(0x1B,0x2D,0x00); b.push(0x0A);
+    b.push(0x1B,0x21,0x00); tx('Kode Voucher'); b.push(0x0A);
+    b.push(0x1B,0x21,0x08); tx(code); b.push(0x0A);
+    b.push(0x1B,0x21,0x00); tx(info); b.push(0x0A);
+    tx('- - - - - - - - - - - -'); b.push(0x0A);
+    b.push(0x1D,0x56,0x00);
+  }
   return new Uint8Array(b);
 }
 
