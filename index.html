@@ -251,34 +251,18 @@ let vouchers = [], sel = new Set(), done = new Set();
 let bleChar = null, bleDev = null;
 
 // ── PARSE CODES ──
-const NOISE = new Set(['RASIDI','RASIDINET','RASIDLNET','RASIDILNET','KODE','VOUCHER','PAKET','HARI']);
+const NOISE = new Set(['NET','WWW','PDF','URL','API','FTP','DNS','TCP','UDP','ISP','LAN','WAN','VPN','SIM','SMS','PIN','OTP','MAC','USB','CPU','GPU','PHP','CSS','HTM','XML','JPG','PNG','GIF','ZIP','EXE','APK']);
 function parseCodes(txt) {
-  // Split per token (spasi, newline, pipe, bracket)
-  const tokens = txt.split(/[\s\|\[\]\(\)\/\\,;:]+/);
-  const found = new Set();
-
-  for (let tok of tokens) {
-    tok = tok.toUpperCase().replace(/[^A-Z0-9]/g,'');
-    // Harus tepat 6 karakter
-    if (tok.length !== 6) continue;
-    // Harus ada minimal 2 huruf dan 1 angka
-    const letters = tok.replace(/[0-9]/g,'').length;
-    const digits  = tok.replace(/[A-Z]/g,'').length;
-    if (letters < 2 || digits < 1) continue;
-    // Buang noise
-    if (NOISE.has(tok)) continue;
-    // Buang semua digit sama: 111111, 222222
-    if (/^(\d)\1+$/.test(tok)) continue;
-    found.add(tok);
-  }
-
-  // Juga coba pattern klasik: tepat 3 huruf + 3 angka dari teks
-  const p1 = txt.toUpperCase().match(/[A-Z]{3}[0-9]{3}/g) || [];
-  p1.forEach(c => {
-    if (!NOISE.has(c.slice(0,3))) found.add(c);
+  const clean = txt.replace(/[^A-Za-z0-9\s]/g,' ').replace(/\s+/g,' ').toUpperCase();
+  const raw = clean.match(/[A-Z]{3}\s?[0-9]{3}/g) || [];
+  const codes = [...new Set(raw.map(s => s.replace(/\s/g,'')))];
+  return codes.filter(code => {
+    const letters = code.slice(0,3);
+    const digits  = code.slice(3);
+    if (NOISE.has(letters)) return false;
+    if (/^(\d)\1{2}$/.test(digits)) return false;
+    return true;
   });
-
-  return [...found];
 }
 
 // ── FILE ──
@@ -299,40 +283,35 @@ async function handleFile(input) {
     for (let i = 1; i <= pdf.numPages; i++) {
       const pg = await pdf.getPage(i);
       const ct = await pg.getTextContent();
-      allTxt += ct.items.map(x => x.str).join('\n') + '\n';
+      allTxt += ct.items.map(x => x.str).join(' ') + ' ';
       setProg(5 + Math.floor(i/pdf.numPages*20));
     }
 
-    const txtCodes = parseCodes(allTxt);
     const isImagePDF = allTxt.replace(/\s/g,'').length < 100;
-    let codes = txtCodes;
+    let codes = parseCodes(allTxt);
 
-    // Pass 2: OCR — jalan kalau image PDF
-    if (isImagePDF || codes.length === 0) {
+    // Pass 2: OCR — hanya jalan kalau tidak ada kode (sama persis versi 115)
+    if (codes.length === 0) {
       if (!window.Tesseract) {
         setStatus('err','⚠ OCR library belum load, coba refresh halaman');
         showProg(false); return;
       }
-      setStatus('load', '🤖 Image PDF — mulai OCR...');
+      setStatus('load', '🤖 OCR mode...');
       const worker = await Tesseract.createWorker('eng');
       await worker.setParameters({
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
-        tessedit_pageseg_mode: '6',
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
       });
       let ocrTxt = '';
       for (let i = 1; i <= pdf.numPages; i++) {
         setStatus('load', '🤖 OCR halaman ' + i + '/' + pdf.numPages + '...');
-        setProg(25 + Math.floor(i/pdf.numPages*70));
+        setProg(40 + Math.floor(i/pdf.numPages*55));
         const pg = await pdf.getPage(i);
-        const vp = pg.getViewport({scale: 3.0});
+        const vp = pg.getViewport({scale: 2.0});
         const canvas = document.createElement('canvas');
         canvas.width = vp.width; canvas.height = vp.height;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        await pg.render({canvasContext: ctx, viewport: vp}).promise;
+        await pg.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise;
         const { data: { text } } = await worker.recognize(canvas);
-        ocrTxt += text + '\n';
+        ocrTxt += text + ' ';
       }
       await worker.terminate();
       codes = parseCodes(ocrTxt);
