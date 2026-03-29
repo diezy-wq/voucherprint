@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>VoucherPrint</title>
+
+<!-- PWA Manifest inline -->
+<link rel="manifest" href="data:application/json,{
+  %22name%22:%22VoucherPrint%22,
+  %22short_name%22:%22VoucherPrint%22,
+  %22description%22:%22Print voucher Mikrotik ke thermal printer via BLE%22,
+  %22start_url%22:%22.%2F%22,
+  %22display%22:%22standalone%22,
+  %22background_color%22:%22%230a0a0f%22,
+  %22theme_color%22:%22%2300ff88%22,
+  %22orientation%22:%22portrait%22,
+  %22icons%22:[{%22src%22:%22https://via.placeholder.com/192x192/00ff88/000000?text=VP%22,%22sizes%22:%22192x192%22,%22type%22:%22image/png%22},{%22src%22:%22https://via.placeholder.com/512x512/00ff88/000000?text=VP%22,%22sizes%22:%22512x512%22,%22type%22:%22image/png%22}]
+}">
+<meta name="theme-color" content="#00ff88">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VoucherPrint">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f;
+  --sur: #13131a;
+  --sur2: #1c1c27;
+  --bdr: #2a2a3d;
+  --acc: #00ff88;
+  --acc2: #7c3aed;
+  --txt: #e8e8f0;
+  --dim: #6b6b8a;
+  --err: #ff4466;
+  --wrn: #ffaa00;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;
+  background-image:linear-gradient(var(--bdr)33 1px,transparent 1px),linear-gradient(90deg,var(--bdr)33 1px,transparent 1px);
+  background-size:40px 40px}
+.app{max-width:480px;margin:0 auto;padding:20px 16px 120px}
+
+/* Header */
+.hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--bdr)}
+.logo{font-size:20px;font-weight:800}.logo span{color:var(--acc)}
+.ble-btn{display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:20px;
+  border:1px solid var(--bdr);background:var(--sur);color:var(--txt);
+  font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;transition:all .2s;
+  min-height:44px}
+.ble-dot{width:8px;height:8px;border-radius:50%;background:var(--dim);transition:background .3s;flex-shrink:0}
+.ble-dot.on{background:var(--acc);box-shadow:0 0 8px var(--acc)}
+.ble-dot.ing{background:var(--wrn);animation:blink 1s infinite}
+
+/* Config */
+.cfg{background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:16px;margin-bottom:16px}
+.cfg-ttl{font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+.cfg-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.cfg-lbl{font-size:11px;color:var(--dim);font-family:'Space Mono',monospace;min-width:80px}
+.cfg-inp{flex:1;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;
+  padding:9px 10px;color:var(--txt);font-family:'Space Mono',monospace;font-size:12px;outline:none;
+  min-height:38px}
+.cfg-inp:focus{border-color:var(--acc)}
+.layout-btn{flex:1;padding:7px 8px;border-radius:6px;border:1px solid var(--bdr);
+  background:var(--bg);color:var(--dim);font-family:'Syne',sans-serif;font-size:11px;
+  font-weight:700;cursor:pointer;transition:all .2s}
+.layout-btn.active{background:var(--acc);color:#000;border-color:var(--acc)}
+
+/* Upload */
+.upload-label{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  border:2px dashed var(--bdr);border-radius:16px;padding:36px 20px;
+  text-align:center;cursor:pointer;background:var(--sur);margin-bottom:16px;
+  transition:all .2s;min-height:130px;user-select:none;-webkit-user-select:none}
+.upload-label:active{border-color:var(--acc);background:rgba(0,255,136,.05)}
+.upload-ico{font-size:36px;margin-bottom:10px;pointer-events:none}
+.upload-ttl{font-size:15px;font-weight:700;margin-bottom:4px;pointer-events:none}
+.upload-sub{font-size:12px;color:var(--dim);font-family:'Space Mono',monospace;pointer-events:none}
+
+/* Status */
+.status{background:var(--sur);border:1px solid var(--dim);border-radius:10px;
+  padding:10px 14px;font-family:'Space Mono',monospace;font-size:11px;color:var(--dim);
+  margin-bottom:12px;display:flex;align-items:center;gap:8px;min-height:40px;transition:all .3s}
+
+/* Progress */
+.prog{height:3px;background:var(--bdr);border-radius:2px;margin-bottom:16px;overflow:hidden;display:none}
+.prog-fill{height:100%;background:var(--acc);border-radius:2px;width:0;transition:width .4s}
+
+/* List */
+.list-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.list-ttl{font-size:13px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.badge{background:var(--acc2);color:#fff;font-size:11px;font-family:'Space Mono',monospace;padding:2px 8px;border-radius:20px}
+.sel-all{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--sur2);
+  border-radius:8px;margin-bottom:8px;cursor:pointer;border:1px solid var(--bdr);min-height:44px}
+.sel-all:active{border-color:var(--acc)}
+.chk{width:20px;height:20px;border-radius:6px;border:2px solid var(--bdr);
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+  color:#000;transition:all .15s;flex-shrink:0}
+.chk.on{background:var(--acc);border-color:var(--acc)}
+.v-item{background:var(--sur);border:1px solid var(--bdr);border-radius:10px;
+  padding:14px;display:flex;align-items:center;gap:12px;cursor:pointer;
+  transition:all .15s;margin-bottom:8px;min-height:56px}
+.v-item.sel{border-color:var(--acc);background:rgba(0,255,136,.05)}
+.v-item.done{opacity:.45}
+.v-item:active{transform:scale(.99)}
+.v-num{font-family:'Space Mono',monospace;font-size:10px;color:var(--dim);width:24px;text-align:right;flex-shrink:0}
+.v-code{font-family:'Space Mono',monospace;font-size:16px;font-weight:700;letter-spacing:1px;flex:1}
+.v-tag{font-size:9px;color:var(--acc);font-family:'Space Mono',monospace;
+  background:rgba(0,255,136,.1);padding:1px 6px;border-radius:4px}
+
+/* Empty */
+.empty{text-align:center;padding:40px 20px;color:var(--dim)}
+.empty-ico{font-size:40px;margin-bottom:10px}
+
+/* Bottom bar */
+.bot{position:fixed;bottom:0;left:0;right:0;background:var(--sur);border-top:1px solid var(--bdr);
+  padding:12px 16px;display:flex;gap:10px;z-index:50;
+  padding-bottom:max(12px, env(safe-area-inset-bottom))}
+.sel-info{display:flex;flex-direction:column;justify-content:center;min-width:50px}
+.sel-n{font-size:15px;font-weight:800}
+.sel-s{font-size:10px;color:var(--dim);font-family:'Space Mono',monospace}
+.btn{flex:1;padding:14px 16px;border-radius:10px;border:1px solid var(--bdr);
+  background:var(--sur2);color:var(--txt);font-family:'Syne',sans-serif;font-size:13px;
+  font-weight:700;cursor:pointer;transition:all .2s;min-height:48px}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.btn.primary{background:var(--acc);color:#000;border-color:var(--acc);font-size:14px}
+.btn.primary:disabled{background:var(--sur2);color:var(--dim);border-color:var(--bdr)}
+.btn.primary:active{background:#00cc6e}
+
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;
+  align-items:center;justify-content:center;padding:20px}
+.modal-bg.show{display:flex}
+.modal{background:var(--sur);border:1px solid var(--bdr);border-radius:16px;padding:20px;
+  width:100%;max-width:320px}
+.modal-ttl{font-size:14px;font-weight:700;margin-bottom:16px}
+.thermal{background:#fff;color:#000;font-family:'Courier New',Courier,monospace;
+  width:210px;margin:0 auto 16px;padding:4px 8px;text-align:center;
+  border-radius:4px;font-size:9px;line-height:1.4}
+.t-brand{font-size:11px;font-weight:bold;text-decoration:underline;margin-bottom:1px}
+.t-lbl{font-size:8px;color:#666}
+.t-code{font-size:15px;font-weight:700;letter-spacing:2px;margin:2px 0}
+.t-hr{border:none;border-top:1px dashed #aaa;margin:2px 0}
+.t-cut{border:none;border-top:1px dashed #000;margin:3px 0}
+.t-solid{border:none;border-top:1px solid #000;margin:3px 0}
+.t-price{font-size:9px}
+.modal-btns{display:flex;gap:8px;margin-top:8px}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="hdr">
+    <div class="logo">Voucher<span>Print</span></div>
+    <button class="ble-btn" id="bleBtn" onclick="toggleBLE()">
+      <div class="ble-dot" id="bleDot"></div>
+      <span id="bleLbl">BLE</span>
+    </button>
+  </div>
+
+  <!-- Config -->
+  <div class="cfg">
+    <div class="cfg-ttl">⚙ Konfigurasi Voucher</div>
+    <div class="cfg-row">
+      <span class="cfg-lbl">Nama Bisnis</span>
+      <input class="cfg-inp" id="cBrand" value="RASIDI.NET" placeholder="Nama bisnis">
+    </div>
+    <div class="cfg-row">
+      <span class="cfg-lbl">Harga</span>
+      <input class="cfg-inp" id="cPrice" value="Rp 2.000" placeholder="Rp 2.000">
+    </div>
+    <div class="cfg-row">
+      <span class="cfg-lbl">Info Extra</span>
+      <input class="cfg-inp" id="cExtra" value="1d 1d" placeholder="1 hari / 2 jam">
+    </div>
+    <div class="cfg-row">
+      <span class="cfg-lbl">Layout</span>
+      <div style="display:flex;gap:8px;flex:1">
+        <button id="btnBig" onclick="setLayout('big')" class="layout-btn">Big</button>
+        <button id="btnNormal" onclick="setLayout('normal')" class="layout-btn">Normal</button>
+        <button id="btnCompact" onclick="setLayout('compact')" class="layout-btn active">Compact</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload buttons -->
+  <div style="display:flex;gap:10px;margin-bottom:16px">
+    <label class="upload-label" for="pdfFile" style="flex:1;margin-bottom:0;padding:24px 12px">
+      <div class="upload-ico">📄</div>
+      <div class="upload-ttl" style="font-size:13px">Upload PDF</div>
+      <div class="upload-sub">OCR otomatis</div>
+    </label>
+    <label class="upload-label" for="txtFile" style="flex:1;margin-bottom:0;padding:24px 12px">
+      <div class="upload-ico">📋</div>
+      <div class="upload-ttl" style="font-size:13px">Upload TXT/CSV</div>
+      <div class="upload-sub">dari Mikrotik export</div>
+    </label>
+  </div>
+  <input type="file" id="pdfFile" accept=".pdf,application/pdf" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none" onchange="handleFile(this)">
+  <input type="file" id="txtFile" accept=".txt,.csv,text/plain,text/csv" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none" onchange="handleTxt(this)">
+
+  <!-- Status -->
+  <div class="status" id="statusEl">
+    <span id="statusTxt">Upload PDF untuk mulai extract kode voucher</span>
+  </div>
+
+  <!-- Progress -->
+  <div class="prog" id="progBar"><div class="prog-fill" id="progFill"></div></div>
+
+  <!-- Voucher Section -->
+  <div id="vSection" style="display:none">
+    <div class="list-hdr">
+      <span class="list-ttl">Daftar Voucher</span>
+      <span class="badge" id="totalBadge">0</span>
+    </div>
+    <div class="sel-all" onclick="toggleAll()">
+      <div class="chk" id="allChk"></div>
+      <span style="font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.5px">Pilih Semua</span>
+    </div>
+    <div id="vList"></div>
+  </div>
+
+  <div class="empty" id="emptyEl">
+    <div class="empty-ico">🎟️</div>
+    <div style="font-size:13px">Upload PDF atau TXT/CSV<br>untuk extract kode voucher</div>
+  </div>
+
+</div>
+
+<!-- Bottom bar -->
+<div class="bot">
+  <div class="sel-info">
+    <div class="sel-n" id="selN">0</div>
+    <div class="sel-s">dipilih</div>
+  </div>
+  <button class="btn" id="prevBtn" disabled onclick="openPreview()">👁 Preview</button>
+  <button class="btn primary" id="printBtn" disabled onclick="doPrint()">🖨 Print</button>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal-bg" id="modalBg" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-ttl">🎟️ Preview Voucher</div>
+    <div class="thermal" id="thermalBox"></div>
+    <div class="modal-btns">
+      <button class="btn" style="min-height:44px" onclick="closeModal()">Tutup</button>
+      <button class="btn primary" style="min-height:44px" onclick="doPrint();closeModal()">🖨 Print</button>
+    </div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let vouchers = [], sel = new Set(), done = new Set();
+let bleChar = null, bleDev = null;
+
+// ── PARSE CODES ──
+const NOISE = new Set(['NET','WWW','PDF','URL','API','FTP','DNS','TCP','UDP','ISP','LAN','WAN','VPN','SIM','SMS','PIN','OTP','MAC','USB','CPU','GPU','PHP','CSS','HTM','XML','JPG','PNG','GIF','ZIP','EXE','APK']);
+function parseCodes(txt) {
+  const clean = txt.replace(/[^A-Za-z0-9\s]/g,' ').replace(/\s+/g,' ').toUpperCase();
+  const raw = clean.match(/[A-Z]{3}\s?[0-9]{3}/g) || [];
+  const codes = [...new Set(raw.map(s => s.replace(/\s/g,'')))];
+  return codes.filter(code => {
+    const letters = code.slice(0,3);
+    const digits  = code.slice(3);
+    if (NOISE.has(letters)) return false;
+    if (/^(\d)\1{2}$/.test(digits)) return false;
+    return true;
+  });
+}
+
+// ── FILE ──
+async function handleFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  setStatus('load', '📄 Membaca ' + file.name + '...');
+  showProg(true); setProg(5);
+
+  try {
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+
+    // Pass 1: text extraction
+    setStatus('load', '🔍 Extract teks...');
+    let allTxt = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const pg = await pdf.getPage(i);
+      const ct = await pg.getTextContent();
+      allTxt += ct.items.map(x => x.str).join(' ') + ' ';
+      setProg(5 + Math.floor(i/pdf.numPages*20));
+    }
+
+    const isImagePDF = allTxt.replace(/\s/g,'').length < 100;
+    let codes = parseCodes(allTxt);
+
+    // Pass 2: OCR — hanya jalan kalau tidak ada kode (sama persis versi 115)
+    if (codes.length === 0) {
+      if (!window.Tesseract) {
+        setStatus('err','⚠ OCR library belum load, coba refresh halaman');
+        showProg(false); return;
+      }
+      setStatus('load', '🤖 OCR mode...');
+      const worker = await Tesseract.createWorker('eng');
+      await worker.setParameters({
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
+      });
+      let ocrTxt = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        setStatus('load', '🤖 OCR halaman ' + i + '/' + pdf.numPages + '...');
+        setProg(40 + Math.floor(i/pdf.numPages*55));
+        const pg = await pdf.getPage(i);
+        const vp = pg.getViewport({scale: 2.0});
+        const canvas = document.createElement('canvas');
+        canvas.width = vp.width; canvas.height = vp.height;
+        await pg.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise;
+        const { data: { text } } = await worker.recognize(canvas);
+        ocrTxt += text + ' ';
+      }
+      await worker.terminate();
+      codes = parseCodes(ocrTxt);
+    }
+
+    if (!codes.length) {
+      setStatus('err','⚠ Tidak ada kode ditemukan — pastikan PDF berisi voucher format XXX999');
+      showProg(false); return;
+    }
+
+    vouchers = codes.map((c,i) => ({id:i, code:c}));
+    sel = new Set(vouchers.map(v=>v.id));
+    done = new Set();
+    renderList();
+    setStatus('ok','✓ ' + codes.length + ' kode voucher berhasil di-extract');
+    document.getElementById('vSection').style.display = 'block';
+    document.getElementById('emptyEl').style.display = 'none';
+    document.getElementById('totalBadge').textContent = codes.length;
+
+  } catch(e) {
+    setStatus('err','✗ Gagal: ' + e.message);
+  }
+  showProg(false); updateUI();
+}
+
+// ── TXT / CSV HANDLER ──
+async function handleTxt(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  setStatus('load', '📋 Membaca ' + file.name + '...');
+  showProg(true); setProg(30);
+
+  try {
+    const txt = await file.text();
+
+    setProg(70);
+    const codes = parseCodes(txt);
+    setProg(100);
+
+    if (!codes.length) {
+      setStatus('err','⚠ Tidak ada kode ditemukan di file — coba format lain');
+      showProg(false); return;
+    }
+
+    vouchers = codes.map((c,i) => ({id:i, code:c}));
+    sel = new Set(vouchers.map(v=>v.id));
+    done = new Set();
+    renderList();
+    setStatus('ok','✓ ' + codes.length + ' kode dari TXT/CSV');
+    document.getElementById('vSection').style.display = 'block';
+    document.getElementById('emptyEl').style.display = 'none';
+    document.getElementById('totalBadge').textContent = codes.length;
+
+  } catch(e) {
+    setStatus('err','✗ Gagal baca file: ' + e.message);
+  }
+  showProg(false); updateUI();
+}
+// ── RENDER ──
+function renderList() {
+  const el = document.getElementById('vList');
+  el.innerHTML = vouchers.map(v => `
+    <div class="v-item${sel.has(v.id)?' sel':''}${done.has(v.id)?' done':''}" onclick="toggleV(${v.id})">
+      <div class="chk${sel.has(v.id)?' on':''}">${sel.has(v.id)?'✓':''}</div>
+      <span class="v-num">${String(v.id+1).padStart(2,'0')}</span>
+      <span class="v-code">${v.code}</span>
+      ${done.has(v.id) ? '<span class="v-tag">✓ printed</span>' : '<span style="font-size:10px;color:var(--dim);font-family:\'Space Mono\',monospace">58mm</span>'}
+    </div>`).join('');
+  const allChk = document.getElementById('allChk');
+  const isAll = sel.size === vouchers.length && vouchers.length > 0;
+  allChk.className = 'chk' + (isAll ? ' on' : '');
+  allChk.textContent = isAll ? '✓' : '';
+}
+
+function toggleV(id) {
+  sel.has(id) ? sel.delete(id) : sel.add(id);
+  renderList(); updateUI();
+}
+
+function toggleAll() {
+  if (sel.size === vouchers.length) sel.clear();
+  else vouchers.forEach(v => sel.add(v.id));
+  renderList(); updateUI();
+}
+
+function updateUI() {
+  const n = sel.size;
+  document.getElementById('selN').textContent = n;
+  document.getElementById('printBtn').disabled = n === 0;
+  document.getElementById('prevBtn').disabled = n === 0;
+}
+
+// ── STATUS ──
+function setStatus(type, msg) {
+  const el = document.getElementById('statusEl');
+  const colors = {ok:'#00ff88', err:'#ff4466', load:'#ffaa00', idle:'#6b6b8a'};
+  el.style.borderColor = colors[type]||colors.idle;
+  el.style.color = colors[type]||colors.idle;
+  document.getElementById('statusTxt').textContent = msg;
+}
+
+function showProg(v) { document.getElementById('progBar').style.display = v?'block':'none'; }
+function setProg(p) { document.getElementById('progFill').style.width = p+'%'; }
+
+// ── PREVIEW ──
+function openPreview() {
+  const first = vouchers.find(v => sel.has(v.id));
+  if (!first) return;
+  const brand = document.getElementById('cBrand').value||'BRAND';
+  const price = document.getElementById('cPrice').value||'Rp 2.000';
+  const extra = document.getElementById('cExtra').value||'';
+  const info  = (extra?extra+' ':'')+price;
+  let html = '';
+
+  if (printLayout === 'big') {
+    html = `
+      <div style="font-size:14px;font-weight:bold;border-bottom:1px dashed #999;padding-bottom:3px;margin-bottom:3px">${brand}</div>
+      <div class="t-lbl">Kode Voucher</div>
+      <div style="font-size:20px;font-weight:800;letter-spacing:2px;margin:3px 0;border:2px solid #000;display:inline-block;padding:3px 6px">${first.code}</div>
+      <hr class="t-hr">
+      <div class="t-price">${info}</div>`;
+  } else if (printLayout === 'normal') {
+    html = `
+      <div style="font-size:12px;font-weight:bold;margin-bottom:2px">${brand}</div>
+      <hr class="t-hr">
+      <div class="t-lbl">Kode Voucher</div>
+      <div style="font-size:17px;font-weight:700;letter-spacing:2px;margin:2px 0">${first.code}</div>
+      <hr class="t-hr">
+      <div class="t-price">${info}</div>
+      <hr class="t-cut">`;
+  } else {
+    html = `
+      <div class="t-brand">${brand}</div>
+      <div class="t-lbl">Kode Voucher</div>
+      <div class="t-code">${first.code}</div>
+      <div class="t-price">${info}</div>
+      <hr class="t-cut">`;
+  }
+  document.getElementById('thermalBox').innerHTML = html;
+  document.getElementById('modalBg').classList.add('show');
+}
+function closeModal() { document.getElementById('modalBg').classList.remove('show'); }
+
+// ── BLE ──
+async function toggleBLE() {
+  if (bleDev?.gatt?.connected) {
+    bleDev.gatt.disconnect(); bleDev=null; bleChar=null;
+    setBleUI('idle'); return;
+  }
+  if (!navigator.bluetooth) { alert('Web Bluetooth hanya support di Chrome Android.\nBuka app ini di Chrome ya!'); return; }
+  try {
+    setBleUI('ing');
+    bleDev = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [
+        '000018f0-0000-1000-8000-00805f9b34fb',
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+        '0000ff00-0000-1000-8000-00805f9b34fb',
+        'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+      ]
+    });
+    bleDev.addEventListener('gattserverdisconnected', () => { bleDev=null; bleChar=null; setBleUI('idle'); });
+    const srv = await bleDev.gatt.connect();
+    let found = false;
+    for (const uuid of ['000018f0-0000-1000-8000-00805f9b34fb','49535343-fe7d-4ae5-8fa9-9fafd205e455','0000ff00-0000-1000-8000-00805f9b34fb','e7810a71-73ae-499d-8c15-faa9aef0c3f2']) {
+      try {
+        const svc = await srv.getPrimaryService(uuid);
+        for (const c of await svc.getCharacteristics()) {
+          if (c.properties.write||c.properties.writeWithoutResponse) { bleChar=c; found=true; break; }
+        }
+      } catch(_){}
+      if (found) break;
+    }
+    if (!found) {
+      try {
+        for (const svc of await srv.getPrimaryServices()) {
+          for (const c of await svc.getCharacteristics()) {
+            if (c.properties.write||c.properties.writeWithoutResponse) { bleChar=c; found=true; break; }
+          }
+          if (found) break;
+        }
+      } catch(_){}
+    }
+    setBleUI(found?'on':'idle');
+    setStatus(found?'ok':'err', found ? '✓ Terhubung ke '+(bleDev.name||'Printer') : '⚠ Printer konek tapi char tidak ditemukan');
+  } catch(e) {
+    setBleUI('idle');
+    if (!e.message.includes('cancelled')) setStatus('err','✗ BLE: '+e.message);
+  }
+}
+
+function setBleUI(s) {
+  const dot = document.getElementById('bleDot');
+  const lbl = document.getElementById('bleLbl');
+  dot.className = 'ble-dot' + (s==='on'?' on':s==='ing'?' ing':'');
+  lbl.textContent = s==='on'?'Terhubung':s==='ing'?'...':'BLE';
+}
+
+let printLayout = 'compact';
+
+function setLayout(mode) {
+  printLayout = mode;
+  ['big','normal','compact'].forEach(m => {
+    document.getElementById('btn'+m.charAt(0).toUpperCase()+m.slice(1)).className =
+      'layout-btn' + (mode===m?' active':'');
+  });
+}
+
+// ── ESC/POS ──
+function escPos(code) {
+  const brand = document.getElementById('cBrand').value||'BRAND';
+  const price = document.getElementById('cPrice').value||'Rp 2.000';
+  const extra = document.getElementById('cExtra').value||'';
+  const b = [], tx = s => { for(const c of s) b.push(c.charCodeAt(0)&0xFF); };
+  const info = (extra?extra+' ':'')+price;
+
+  b.push(0x1B,0x40);
+  b.push(0x1B,0x61,0x01); // center
+
+  if (printLayout === 'big') {
+    // BIG: brand & kode double height+width, 2 garis dashes, 3 feed
+    b.push(0x1B,0x21,0x30); tx(brand); b.push(0x0A);
+    b.push(0x1B,0x21,0x00); tx('----------------'); b.push(0x0A);
+    tx('Kode Voucher'); b.push(0x0A);
+    b.push(0x1B,0x21,0x30); tx(code); b.push(0x0A);
+    b.push(0x1B,0x21,0x00); tx('----------------'); b.push(0x0A);
+    tx(info); b.push(0x0A,0x0A,0x0A);
+    b.push(0x1D,0x56,0x00);
+
+  } else if (printLayout === 'normal') {
+    // NORMAL: brand bold biasa, kode double width saja
+    b.push(0x1B,0x21,0x08); tx(brand); b.push(0x0A);
+    b.push(0x1B,0x21,0x00); tx('----------------'); b.push(0x0A);
+    tx('Kode Voucher'); b.push(0x0A);
+    b.push(0x1B,0x21,0x20); tx(code); b.push(0x0A); // double width
+    b.push(0x1B,0x21,0x00); tx('----------------'); b.push(0x0A);
+    tx(info); b.push(0x0A,0x0A);
+    tx('- - - - - - - - - - - -'); b.push(0x0A);
+    b.push(0x1D,0x56,0x00);
+
+  } else {
+    // COMPACT: semua normal, brand underline, kode bold, 1 feed
+    b.push(0x1B,0x21,0x08);
+    b.push(0x1B,0x2D,0x01); tx(brand); b.push(0x1B,0x2D,0x00); b.push(0x0A);
+    b.push(0x1B,0x21,0x00); tx('Kode Voucher'); b.push(0x0A);
+    b.push(0x1B,0x21,0x08); tx(code); b.push(0x0A);
+    b.push(0x1B,0x21,0x00); tx(info); b.push(0x0A);
+    tx('- - - - - - - - - - - -'); b.push(0x0A);
+    b.push(0x1D,0x56,0x00);
+  }
+  return new Uint8Array(b);
+}
+
+// ── PRINT ──
+async function doPrint() {
+  const list = vouchers.filter(v => sel.has(v.id));
+  if (!list.length) return;
+  if (bleChar) {
+    setStatus('load','🖨 Printing '+list.length+' voucher via BLE...');
+    showProg(true); setProg(0);
+    for (let i=0; i<list.length; i++) {
+      try {
+        const data = escPos(list[i].code);
+        for (let j=0; j<data.length; j+=20) {
+          await bleChar.writeValue(data.slice(j,j+20));
+          await new Promise(r=>setTimeout(r,30));
+        }
+        done.add(list[i].id);
+        setProg(Math.floor((i+1)/list.length*100));
+      } catch(e) { setStatus('err','✗ '+list[i].code+': '+e.message); showProg(false); return; }
+    }
+    sel.clear(); renderList(); updateUI(); showProg(false);
+    setStatus('ok','✓ '+list.length+' voucher berhasil di-print');
+  } else {
+    browserPrint(list);
+  }
+}
+
+function browserPrint(list) {
+  const brand = document.getElementById('cBrand').value||'BRAND';
+  const price = document.getElementById('cPrice').value||'Rp 2.000';
+  const extra = document.getElementById('cExtra').value||'';
+  // 58mm = 164px at 72dpi, tapi browser print lebih akurat pakai mm langsung
+  // margin 0 supaya tidak ada padding tambahan dari browser
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    @page {
+      size: 58mm auto;
+      margin: 0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 9pt;
+      width: 58mm;
+      margin: 0 auto;
+      background: white;
+      color: black;
+    }
+    .v {
+      width: 54mm;
+      margin: 0 auto;
+      padding: 3mm 0;
+      text-align: center;
+      page-break-after: always;
+      border-bottom: 1px dashed #ccc;
+    }
+    .v:last-child { border-bottom: none; }
+    .brand {
+      font-size: 11pt;
+      font-weight: bold;
+      padding-bottom: 2mm;
+      margin-bottom: 2mm;
+      border-bottom: 1px dashed #000;
+    }
+    .lbl { font-size: 7pt; color: #555; margin-bottom: 1mm; }
+    .code {
+      font-size: 16pt;
+      font-weight: bold;
+      letter-spacing: 2px;
+      border: 2px solid #000;
+      display: inline-block;
+      padding: 1mm 2mm;
+      margin: 1mm 0;
+      border-radius: 2px;
+    }
+    .sep { border: none; border-top: 1px dashed #aaa; margin: 2mm 0; }
+    .info { font-size: 8pt; }
+  </style></head><body>
+  ${list.map(v=>`<div class="v">
+    <div class="brand">${brand}</div>
+    <div class="lbl">Kode Voucher</div>
+    <div class="code">${v.code}</div>
+    <hr class="sep">
+    <div class="info">${extra?extra+'&nbsp;&nbsp;':''}${price}</div>
+  </div>`).join('')}
+  </body></html>`;
+  const w = window.open('','_blank','width=300,height=500');
+  if (!w) { alert('Izinkan popup di browser ya!'); return; }
+  w.document.write(html); w.document.close();
+  setTimeout(()=>{w.focus();w.print();},600);
+  list.forEach(v=>done.add(v.id));
+  sel.clear(); renderList(); updateUI();
+  setStatus('ok','✓ '+list.length+' voucher dikirim ke print dialog');
+}
+</script>
+</body>
+</html>
